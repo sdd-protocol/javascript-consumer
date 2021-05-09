@@ -23,8 +23,8 @@ module.exports = class {
     this.displayId = null
     this.logger = options.logger || DefaultLoggerNoOp
     this.timeouts = options.timeouts || DefaultTimeouts
-    this.reconnectable = options.allowReconnections || true
-    this.disconnectOnExitSignals = options.disconnectOnExitSignals || true
+    this.reconnectable = options.hasOwnProperty('allowReconnections') ? options.allowReconnections : true
+    this.disconnectOnExitSignals = options.hasOwnProperty('disconnectOnExitSignals') ? options.disconnectOnExitSignals : true
   }
 
   clear () {
