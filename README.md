@@ -1,0 +1,1 @@
+JavaScript consumer library for the [Simple Device Drawing Protocol](https://sddp.electricsheep.co)

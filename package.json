@@ -1,0 +1,25 @@
+{
+  "name": "sddp-javascript-consumer",
+  "homepage": "https://sddp.electricsheep.co/",
+  "version": "0.0.1",
+  "description": "JavaScript consumer library for the Simple Device Drawing Protocol",
+  "main": "index.js",
+  "scripts": {
+    "lint": "standard --fix"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sdd-protocol/javascript-consumer.git"
+  },
+  "author": "Ryan Joseph (Electric Sheep Co.)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/sdd-protocol/javascript-consumer/issues"
+  },
+  "devDependencies": {
+    "standard": "^16.0.3"
+  },
+  "dependencies": {
+    "ioredis": "^4.27.2"
+  }
+}
