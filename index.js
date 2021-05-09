@@ -48,7 +48,7 @@ module.exports = class {
   }
 
   disconnect () {
-    return this._estabPublish('disconnect');
+    return this._disconnect(true);
   }
 
   async connect (displayId, ...args) {
@@ -92,43 +92,8 @@ module.exports = class {
         clearTimeout(this._rcHandle)
         this._rcHandle = null
         this.logger.log(`Connection attempt '${this.id} request ${this.displayId}' timed out!`)
-        disconn(this._expectNextAckIs, this._seqNo)
+        this._disconnect(this._expectNextAckIs, this._seqNo)
       }, this.timeouts.connect)
-    }
-
-    const disconn = (selfIssued = false) => {
-      if (selfIssued) {
-        this.disconnect()
-      }
-
-      if (this._on.disconnect && this._hasConnectedOnce) {
-        this._on.disconnect(this._expectNextAckIs, this._seqNo)
-      }
-
-      this._estabPublish = (..._a) => { }
-
-      clearTimeout(this._toHandle)
-      this._toHandle = null
-
-      if (this._ackListener) {
-        this._ackListener.unsubscribe(this._ackChan)
-        this._ackListener.disconnect()
-        delete this._ackListener, this._ackListener = this._ackChan = null
-      }
-
-      if (!this.reconnectable) {
-        clearTimeout(this._rcHandle)
-        clearTimeout(this._toHandle)
-        clearTimeout(this._connectTOHandle)
-        return
-      }
-
-      if (!this._rcHandle) {
-        this.logger.log(`Waiting ${this.timeouts.reconnect || 0}ms to attempt reconnection...`)
-        this._rcHandle = setTimeout(_realConnect, this.timeouts.reconnect || 0)
-      } else {
-        this.logger.error('RC handle exists!')
-      }
     }
 
     return new Promise((resolve, reject) => {
@@ -145,7 +110,7 @@ module.exports = class {
               if (!this._toHandle) {
                 this._toHandle = setTimeout(() => {
                   this.logger.error(`Ack TO Fired! expected ${this._expectNextAckIs} (seqNo: ${this._seqNo})`)
-                  disconn(this._expectNextAckIs, this._seqNo)
+                  this._disconnect(this._expectNextAckIs, this._seqNo)
                 }, this.timeouts.ack)
               }
 
@@ -188,11 +153,11 @@ module.exports = class {
               if (this.disconnectOnExitSignals) {
                 const sigHandler = (_signal) => {
                   // allows the option to be changed at runtime (though it probably shouldn't be...)
-                  if (!this.disconnectOnExitSignals) {
-                    return;
+                  if (this.disconnectOnExitSignals) {
+                    this._disconnect(true);
                   }
 
-                  this.disconn(true);
+                  process.exit(0);
                 }
 
                 ['SIGINT', 'SIGTERM', 'SIGHUP'].forEach((signal) => process.on(signal, sigHandler));
@@ -222,7 +187,7 @@ module.exports = class {
 
             if (comps[3] === 'bad_protocol_version') {
               this.reconnectable = false
-              disconn()
+              this._disconnect()
             }
           }
         }
@@ -234,5 +199,49 @@ module.exports = class {
 
   _publish (channel, message) {
     return this.publishConn.publish(channel, message)
+  }
+
+  _disconnect (selfIssued = false) {
+    if (selfIssued) {
+      this._estabPublish('disconnect')
+    }
+
+    if (this._on.disconnect && this._hasConnectedOnce) {
+      this._on.disconnect(this._expectNextAckIs, this._seqNo)
+    }
+
+    this._estabPublish = (..._a) => { }
+
+    clearTimeout(this._toHandle)
+    this._toHandle = null
+
+    if (this._ackListener) {
+      this._ackListener.unsubscribe(this._ackChan)
+      this._ackListener.disconnect()
+      delete this._ackListener, this._ackListener = this._ackChan = null
+    }
+
+    if (!this.reconnectable || selfIssued) {
+      clearTimeout(this._rcHandle)
+      clearTimeout(this._toHandle)
+      clearTimeout(this._connectTOHandle)
+    }
+
+    if (selfIssued) {
+      this._connectConn.disconnect()
+      this.publishConn.disconnect()
+    }
+
+    // return before reconnect if reconnect is disabled or if disconnect() was called directly (selfIssued===true)
+    if (!this.reconnectable || selfIssued) {
+      return
+    }
+
+    if (!this._rcHandle) {
+      this.logger.log(`Waiting ${this.timeouts.reconnect || 0}ms to attempt reconnection...`)
+      this._rcHandle = setTimeout(_realConnect, this.timeouts.reconnect || 0)
+    } else {
+      this.logger.error('RC handle exists!')
+    }
   }
 }
