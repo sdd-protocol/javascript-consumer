@@ -6,8 +6,6 @@ _TBD_
 
 ## Example: `hello-world`
 
-_Note_: Nearly all error handling here has been omitted for brevity. Don't do this!
-
 ```javascript
 new require('sddp-javascript-consumer')('sddp.ConsumerA', 'sddpExample', { 
   host: '...', 

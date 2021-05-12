@@ -74,28 +74,6 @@ module.exports = class {
       throw new Error('Cannot connect to Redis server')
     }
 
-    const _realConnect = (reject = (msg) => { throw new Error(msg) }) => {
-      this._seqNo = 0
-      this._expectNextAckIs = 1
-
-      this._connectConn.subscribe(this._respChan, (err) => {
-        if (err) {
-          return reject('Subscription reject')
-        }
-      })
-
-      const connParams = [`${this.prefix}ctrl-init`, `${this.id} request ${this.displayId} ${ProtocolVersion}`]
-      this.logger.log('Issuing connect attempt:', ...connParams)
-      this._publish(...connParams)
-
-      this._connectTOHandle = setTimeout(() => {
-        clearTimeout(this._rcHandle)
-        this._rcHandle = null
-        this.logger.log(`Connection attempt '${this.id} request ${this.displayId}' timed out!`)
-        this._disconnect(this._expectNextAckIs, this._seqNo)
-      }, this.timeouts.connect)
-    }
-
     return new Promise((resolve, reject) => {
       this._respChan = `${this.prefix}ctrl-init:request:resp`
 
@@ -110,7 +88,7 @@ module.exports = class {
               if (!this._toHandle) {
                 this._toHandle = setTimeout(() => {
                   this.logger.error(`Ack TO Fired! expected ${this._expectNextAckIs} (seqNo: ${this._seqNo})`)
-                  this._disconnect(this._expectNextAckIs, this._seqNo)
+                  this._disconnect()
                 }, this.timeouts.ack)
               }
 
@@ -193,12 +171,34 @@ module.exports = class {
         }
       })
 
-      _realConnect(reject)
+      this._realConnect(reject)
     })
   }
 
   _publish (channel, message) {
     return this.publishConn.publish(channel, message)
+  }
+
+  _realConnect (reject = (msg) => { throw new Error(msg) }) {
+    this._seqNo = 0
+    this._expectNextAckIs = 1
+
+    this._connectConn.subscribe(this._respChan, (err) => {
+      if (err) {
+        return reject('Subscription reject')
+      }
+    })
+
+    const connParams = [`${this.prefix}ctrl-init`, `${this.id} request ${this.displayId} ${ProtocolVersion}`]
+    this.logger.log('Issuing connect attempt:', ...connParams)
+    this._publish(...connParams)
+
+    this._connectTOHandle = setTimeout(() => {
+      clearTimeout(this._rcHandle)
+      this._rcHandle = null
+      this.logger.log(`Connection attempt '${this.id} request ${this.displayId}' timed out!`)
+      this._disconnect()
+    }, this.timeouts.connect)
   }
 
   _disconnect (selfIssued = false) {
@@ -239,7 +239,7 @@ module.exports = class {
 
     if (!this._rcHandle) {
       this.logger.log(`Waiting ${this.timeouts.reconnect || 0}ms to attempt reconnection...`)
-      this._rcHandle = setTimeout(_realConnect, this.timeouts.reconnect || 0)
+      this._rcHandle = setTimeout(this._realConnect.bind(this), this.timeouts.reconnect || 0)
     } else {
       this.logger.error('RC handle exists!')
     }
