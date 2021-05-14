@@ -55,6 +55,11 @@ module.exports = class {
 
   async issueCustomCommand (command, ...args) {
     return new Promise(async (resolve, reject) => {
+      if (!this._hasConnectedOnce || !this._ackChan) {
+        reject(`not connected`)
+        return
+      }
+
       const nextSeqNo = this._seqNo + 1
       this.awaitingAckedResponse[nextSeqNo] = { command, resolve }
       let sentSeqNo = await this._estabPublish(`${command} ${args.join(' ')}`)
@@ -65,7 +70,7 @@ module.exports = class {
 
       this.awaitingAckedResponse[nextSeqNo].timeoutHandle = setTimeout(() => {
         delete this.awaitingAckedResponse[sentSeqNo]
-        reject({ error: `custom command ${command} timed out waiting for response (seqNo=${sentSeqNo})!` })
+        reject(`custom command '${command}' timed out waiting for response (seqNo=${sentSeqNo})!`)
       }, this.timeouts.customCommands)
     });
   }
