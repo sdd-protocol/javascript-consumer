@@ -7,7 +7,8 @@ const ProtocolVersion = 4
 const DefaultTimeouts = {
   connect: 1000,
   reconnect: 3000,
-  ack: 5000
+  ack: 5000,
+  customCommands: 2000
 }
 
 const DefaultLoggerNoOp = {
@@ -25,30 +26,48 @@ module.exports = class {
     this.timeouts = options.timeouts || DefaultTimeouts
     this.reconnectable = options.hasOwnProperty('allowReconnections') ? options.allowReconnections : true
     this.disconnectOnExitSignals = options.hasOwnProperty('disconnectOnExitSignals') ? options.disconnectOnExitSignals : true
+    this.awaitingAckedResponse = {}
   }
 
-  clear () {
+  async clear () {
     return this._estabPublish('clear')
   }
 
-  writeAt (column, row, message) {
+  async writeAt (column, row, message) {
     return this._estabPublish(`writeat ${column} ${row} ${message}`)
   }
 
-  toggleDisplay (on) {
+  async toggleDisplay (on) {
     return this._estabPublish(`toggleDisplay ${!!on ? 'on' : 'off'}`)
   }
 
-  toggleCursor (on) {
+  async toggleCursor (on) {
     return this._estabPublish(`toggleCursor ${!!on ? 'on' : 'off'}`)
   }
 
-  toggleCursorBlink (on) {
+  async toggleCursorBlink (on) {
     return this._estabPublish(`toggleCursorBlink ${!!on ? 'on' : 'off'}`)
   }
 
   disconnect () {
-    return this._disconnect(true);
+    return this._disconnect(true)
+  }
+
+  async issueCustomCommand (command, ...args) {
+    return new Promise(async (resolve, reject) => {
+      const nextSeqNo = this._seqNo + 1
+      this.awaitingAckedResponse[nextSeqNo] = { command, resolve }
+      let sentSeqNo = await this._estabPublish(`${command} ${args.join(' ')}`)
+
+      if (sentSeqNo !== nextSeqNo) {
+        throw new Error('crapola!')
+      }
+
+      this.awaitingAckedResponse[nextSeqNo].timeoutHandle = setTimeout(() => {
+        delete this.awaitingAckedResponse[sentSeqNo]
+        reject({ error: `custom command ${command} timed out waiting for response (seqNo=${sentSeqNo})!` })
+      }, this.timeouts.customCommands)
+    });
   }
 
   async connect (displayId, ...args) {
@@ -84,7 +103,7 @@ module.exports = class {
           if (comps[1] === 'ok') {
             const estabChan = `${this.prefix}estab:${this.displayId}|${this.id}`
 
-            this._estabPublish = (m) => {
+            this._estabPublish = async (m) => {
               if (!this._toHandle) {
                 this._toHandle = setTimeout(() => {
                   this.logger.error(`Ack TO Fired! expected ${this._expectNextAckIs} (seqNo: ${this._seqNo})`)
@@ -93,18 +112,26 @@ module.exports = class {
               }
 
               this._seqNo += 1
-              return this._publish(estabChan, `${this._seqNo} ${m}`)
+              await this._publish(estabChan, `${this._seqNo} ${m}`)
+              return this._seqNo
             }
 
             this._ackChan = `${estabChan}:ack`
             this._ackListener = new Redis(this.redisCfg)
 
             this._ackListener.on('message', (_c, message) => {
-              const mSN = Number(message)
+              const comps = message.split(/\s+/)
+              const mSN = Number(comps[0])
 
               if (Number.isNaN(mSN)) {
                 this.logger.error(`Bad seqNo! ${message}`)
                 return
+              }
+
+              if (this.awaitingAckedResponse[mSN]) {
+                clearTimeout(this.awaitingAckedResponse[mSN].timeoutHandle)
+                this.awaitingAckedResponse[mSN].resolve(comps.splice(1).join(' '))
+                delete this.awaitingAckedResponse[mSN]
               }
 
               if (mSN === this._expectNextAckIs) {
