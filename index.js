@@ -26,6 +26,7 @@ module.exports = class {
     this.timeouts = options.timeouts || DefaultTimeouts
     this.reconnectable = options.hasOwnProperty('allowReconnections') ? options.allowReconnections : true
     this.disconnectOnExitSignals = options.hasOwnProperty('disconnectOnExitSignals') ? options.disconnectOnExitSignals : true
+    this.messageStats = options.hasOwnProperty('messageStats') ? options.messageStats : { rx: 0, tx: 0 }
     this.awaitingAckedResponse = {}
   }
 
@@ -102,6 +103,7 @@ module.exports = class {
       this._respChan = `${this.prefix}ctrl-init:request:resp`
 
       this._connectConn.on('message', (_channel, message) => {
+        this.messageStats.rx++
         const comps = message.split(' ')
 
         if (comps.length >= 3 && comps[0] === this.displayId && comps[2] === this.id) {
@@ -125,6 +127,7 @@ module.exports = class {
             this._ackListener = new Redis(this.redisCfg)
 
             this._ackListener.on('message', (_c, message) => {
+              this.messageStats.rx++
               const comps = message.split(/\s+/)
               const mSN = Number(comps[0])
 
@@ -208,6 +211,7 @@ module.exports = class {
   }
 
   _publish (channel, message) {
+    this.messageStats.tx++
     return this.publishConn.publish(channel, message)
   }
 
