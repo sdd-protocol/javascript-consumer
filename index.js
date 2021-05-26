@@ -11,11 +11,6 @@ const DefaultTimeouts = {
   customCommands: 2000
 }
 
-const DefaultLoggerNoOp = {
-  log: (..._) => {},
-  error: (..._) => {}
-}
-
 class MismatchedSequenceNumber extends Error {
   constructor(currentSeqNo, expectedSeqNo, ...args) {
     super(...args)
@@ -36,7 +31,6 @@ module.exports = class {
     this.prefix = prefix
     this.redisCfg = redisCfg
     this.displayId = null
-    this.logger = options.logger || DefaultLoggerNoOp
     this.timeouts = options.timeouts || DefaultTimeouts
     this.reconnectable = options.hasOwnProperty('allowReconnections') ? options.allowReconnections : true
     this.disconnectOnExitSignals = options.hasOwnProperty('disconnectOnExitSignals') ? options.disconnectOnExitSignals : true
@@ -126,7 +120,6 @@ module.exports = class {
             this._estabPublish = async (m) => {
               if (!this._toHandle) {
                 this._toHandle = setTimeout(() => {
-                  this.logger.error(`Ack TO Fired! expected ${this._expectNextAckIs} (seqNo: ${this._seqNo})`)
                   this._disconnect()
                 }, this.timeouts.ack)
               }
@@ -145,7 +138,6 @@ module.exports = class {
               const mSN = Number(comps[0])
 
               if (Number.isNaN(mSN)) {
-                this.logger.error(`Bad seqNo! ${message}`)
                 return
               }
 
@@ -185,7 +177,6 @@ module.exports = class {
               return resolve(this)
             })
 
-            this.logger.log(`Established on "${estabChan}" (${this._hasConnectedOnce})`)
             this._connectConn.unsubscribe(this._respChan)
 
             if (this._hasConnectedOnce) {
@@ -232,13 +223,11 @@ module.exports = class {
     })
 
     const connParams = [`${this.prefix}ctrl-init`, `${this.id} request ${this.displayId} ${ProtocolVersion}`]
-    this.logger.log('Issuing connect attempt:', ...connParams)
     this._publish(...connParams)
 
     this._connectTOHandle = setTimeout(() => {
       clearTimeout(this._rcHandle)
       this._rcHandle = null
-      this.logger.log(`Connection attempt '${this.id} request ${this.displayId}' timed out!`)
       this._disconnect()
     }, this.timeouts.connect)
   }
@@ -280,10 +269,7 @@ module.exports = class {
     }
 
     if (!this._rcHandle) {
-      this.logger.log(`Waiting ${this.timeouts.reconnect || 0}ms to attempt reconnection...`)
       this._rcHandle = setTimeout(this._realConnect.bind(this), this.timeouts.reconnect || 0)
-    } else {
-      this.logger.error('RC handle exists!')
     }
   }
 }
