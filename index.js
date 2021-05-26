@@ -16,6 +16,20 @@ const DefaultLoggerNoOp = {
   error: (..._) => {}
 }
 
+class MismatchedSequenceNumber extends Error {
+  constructor(currentSeqNo, expectedSeqNo, ...args) {
+    super(...args)
+    this.current = currentSeqNo
+    this.expected = expectedSeqNo
+  }
+
+  get [Symbol.toStringTag]() {
+    return `current=${this.current} expected=${this.expected}`
+  }
+}
+
+class ConfigurationError extends Error {}
+
 module.exports = class {
   constructor (localId, prefix, redisCfg, options = {}) {
     this.id = localId
@@ -66,7 +80,7 @@ module.exports = class {
       let sentSeqNo = await this._estabPublish(`${command} ${args.join(' ')}`)
 
       if (sentSeqNo !== nextSeqNo) {
-        throw new Error('crapola!')
+        throw new MismatchedSequenceNumber(sentSeqNo, nextSeqNo, 'sent vs. next')
       }
 
       this.awaitingAckedResponse[nextSeqNo].timeoutHandle = setTimeout(() => {
@@ -78,8 +92,7 @@ module.exports = class {
 
   async connect (displayId, ...args) {
     if (!this.id || !displayId || !this.prefix) {
-      console.error(this.id, displayId, this.prefix)
-      throw new Error('Misconfigured instance')
+      throw new ConfigurationError(`Unspecified id (${this.id}), displayId (${displayId}) or prefix (${this.prefix})`)
     }
 
     const [onDisconnect, onReconnect] = args
@@ -96,7 +109,7 @@ module.exports = class {
     }
 
     if (!this.publishConn || !this._connectConn) {
-      throw new Error('Cannot connect to Redis server')
+      throw new ConfigurationError('Cannot connect to Redis server')
     }
 
     return new Promise((resolve, reject) => {
@@ -146,15 +159,8 @@ module.exports = class {
                 clearTimeout(this._toHandle)
                 this._toHandle = null
                 this._expectNextAckIs = mSN + 1
-              } else if (mSN > 1 && this._expectNextAckIs > 1) {
-                if (mSN > this._expectNextAckIs) {
-                  this.logger.error(`Rx'ed ACK ${mSN} greater than expected ${this._expectNextAckIs}, resetting...`)
-                  this._expectNextAckIs = this._seqNo = mSN + 1
-                } else {
-                  this.logger.error(`Missed ack! ${mSN}, expected ${this._expectNextAckIs} (seqNo: ${this._seqNo})`)
-                }
-              } else if (mSN === 2 && this._expectNextAckIs === 1) {
-                this._expectNextAckIs = mSN + 1
+              } else {
+                throw new MismatchedSequenceNumber(mSN, this._expectNextAckIs)
               }
             })
 
