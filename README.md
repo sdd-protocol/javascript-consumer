@@ -10,8 +10,6 @@ _TBD_
 new require('sddp-javascript-consumer')('sddp.ConsumerA', 'sddpExample', { 
   host: '...', 
   password: '...' 
-}, { 
-  logger: console
 })
 .connect(process.argv.pop() || 'sddp.Display1')
 .then((display) => {
