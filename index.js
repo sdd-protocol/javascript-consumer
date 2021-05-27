@@ -228,16 +228,16 @@ module.exports = class {
     this._connectTOHandle = setTimeout(() => {
       clearTimeout(this._rcHandle)
       this._rcHandle = null
-      this._disconnect()
+      this._disconnect(false, true)
     }, this.timeouts.connect)
   }
 
-  _disconnect (selfIssued = false) {
+  _disconnect (selfIssued = false, fromConnectTimeout = false) {
     if (selfIssued) {
       this._estabPublish('disconnect')
     }
 
-    if (this._on.disconnect && this._hasConnectedOnce) {
+    if (this._on.disconnect && this._hasConnectedOnce && !fromConnectTimeout) {
       this._on.disconnect(this._expectNextAckIs, this._seqNo)
     }
 
