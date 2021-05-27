@@ -84,12 +84,11 @@ module.exports = class {
     });
   }
 
-  async connect (displayId, ...args) {
+  async connect (displayId, onDisconnect, onReconnect) {
     if (!this.id || !displayId || !this.prefix) {
       throw new ConfigurationError(`Unspecified id (${this.id}), displayId (${displayId}) or prefix (${this.prefix})`)
     }
 
-    const [onDisconnect, onReconnect] = args
     this.displayId = displayId
     this._hasConnectedOnce = false
     this._connectConn = new Redis(this.redisCfg)
@@ -181,7 +180,7 @@ module.exports = class {
 
             if (this._hasConnectedOnce) {
               if (this._on.reconnect) {
-                this._on.reconnect(this, estabChan)
+                this._on.reconnect(this, estabChan, this._retryCount)
               }
             }
 
@@ -191,6 +190,7 @@ module.exports = class {
             clearTimeout(this._connectTOHandle)
             this._rcHandle = this._toHandle = this._connectTOHandle = null
             this._hasConnectedOnce = true
+            this._retryCount = 0
           } else if (comps[1] === 'reject') {
             comps[3].__proto__.wasFatal = true
             reject(comps[3])
@@ -226,6 +226,9 @@ module.exports = class {
     this._publish(...connParams)
 
     this._connectTOHandle = setTimeout(() => {
+      if (this._rcHandle) {
+        ++this._retryCount
+      }
       clearTimeout(this._rcHandle)
       this._rcHandle = null
       this._disconnect(false, true)
