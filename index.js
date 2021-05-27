@@ -24,6 +24,7 @@ class MismatchedSequenceNumber extends Error {
 }
 
 class ConfigurationError extends Error {}
+class ConnectionError extends Error {}
 
 module.exports = class {
   constructor (localId, prefix, redisCfg, options = {}) {
@@ -212,7 +213,7 @@ module.exports = class {
     return this.publishConn.publish(channel, message)
   }
 
-  _realConnect (reject = (msg) => { throw new Error(msg) }) {
+  _realConnect (reject = (msg) => { throw new ConnectionError(msg) }) {
     this._seqNo = 0
     this._expectNextAckIs = 1
 
